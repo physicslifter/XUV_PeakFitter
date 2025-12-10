@@ -62,7 +62,7 @@ class XUVImage:
 
     def plot_lineout(self, ax):
         x_data = self.pixels if self.has_wavelengths == False else self.wavelengths
-        ax.plot(x_data, self.lineout, label = "Lineout")
+        ax.plot(x_data, self.lineout, label = "Lineout", c = "dodgerblue", linewidth = 2)
 
     def plot_img(self, ax):
         ax.imshow(self.img)
