@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
-from matplotlib.widgets import Slider, RangeSlider, Button
+from matplotlib.widgets import Slider, RangeSlider, Button, CheckButtons
+import matplotlib.patches as patches
 from PeakFitter import *
 from scipy.optimize import curve_fit
 from scipy.special import wofz
@@ -84,6 +85,7 @@ class Plotter:
     def __init__(self, fname, calibration:LinearCalibration):
         self.fname = fname
         self.has_fit = False #set has_fit to false
+        self.peaks_found = False #boolean control for auto peak finder
         self.num_peaks_measured = 0 #initialize w/ 0 measured peaks
         self.peak_colors = ["magenta", "orange", "lime", "gold", "mediumspringgreen"]
         self.measured_peak_lines = []
@@ -95,40 +97,102 @@ class Plotter:
         self.show()
 
     def setup_plot(self):
-        self.fig = plt.figure(figsize = (13, 8))
-        self.lineout_ax = self.fig.add_axes([0.1, 0.25, 0.567, 0.65])
-        #self.fig.subplots_adjust(bottom = 0.25)
-        #table for measured peaks
+        self.fig = plt.figure(figsize = (15, 8))
+        self.lineout_ax = self.fig.add_axes([0.1, 0.25, 0.5, 0.65])
         self.lineout_ax.set_title(f"{self.fname.split('/')[-1]}")
         self.lineout_ax.set_xlabel(r"$\lambda$ $(nm)$")
         self.lineout_ax.set_ylabel(r"$Intensity$ $(a.u.)$")
-        table_ax = self.fig.add_axes([0.7, 0.25, 0.25, 0.65])
-        table_ax.set_axis_off()
-        table_ax.set_title("Measured Peaks")
-        self.peak_table = table_ax.table(cellText = [["", "", "", ""]],
-                                    rowLabels = [""],
-                                    colLabels = ["#", "Loc", "Amp", "Area"],
-                                    loc = "center"
-                                    )
-        for key, cell in self.peak_table.get_celld().items():
-            cell.set_height(0.1)
+        self.setup_table()
+        self.setup_manual_sliders()
+        self.setup_manual_section()
+        self.setup_auto_section()
+        self.setup_measurement_section()
 
-        #sliders
-        self.x_zoom_slider_ax = self.fig.add_axes([0.1, 0.15, 0.65, 0.05])
+    def setup_manual_sliders(self):
+        self.x_zoom_slider_ax = self.fig.add_axes([0.1, 0.15, 0.42, 0.05])
         self.x_zoom_slider = RangeSlider(self.x_zoom_slider_ax, "X range", min(self.img.wavelengths), max(self.img.wavelengths), valinit = (min(self.img.wavelengths), max(self.img.wavelengths)))
 
-        self.peak_loc_slider_ax = self.fig.add_axes([0.1, 0.1, 0.65, 0.05])
+        self.peak_loc_slider_ax = self.fig.add_axes([0.1, 0.1, 0.42, 0.05])
         self.peak_loc_slider = RangeSlider(self.peak_loc_slider_ax, "Peak\nLoc", min(self.img.wavelengths), max(self.img.wavelengths), valinit = (min(self.img.wavelengths), max(self.img.wavelengths)))
 
-        self.background_slider_ax = self.fig.add_axes([0.1, 0.05, 0.65, 0.05])
+        self.background_slider_ax = self.fig.add_axes([0.1, 0.05, 0.42, 0.05])
         self.background_slider = Slider(self.background_slider_ax, "Background", valmin = -max(self.img.lineout), valmax = max(self.img.lineout), valinit=0)
 
+    def setup_table(self):
+        table_ax = self.fig.add_axes([0.62, 0.35, 0.35, 0.5])
+        table_ax.set_axis_off()
+        table_ax.set_title("Measured Peaks")
+        self.peak_table = table_ax.table(cellText = [["", "", "", "", ""]],
+                                    rowLabels = [""],
+                                    colLabels = ["#", "Loc", "Amp", "Area", "Measurement\nMethod"],
+                                    loc = "center"
+                                    )
+        
+        for key, cell in self.peak_table.get_celld().items():
+            cell.set_height(0.1)
+            cell.set_width(0.2)
+
+    def setup_manual_section(self):
+        #outline section
+        outline = patches.Rectangle((0.62, 0.05), 0.11, 0.3, fill = True, facecolor = "lightcyan", edgecolor = "k", figure = self.fig, zorder = 0)
+        self.fig.add_artist(outline)
+        self.fig.text(0.675, 0.31, "Manual\nLocator", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
+
+        #checkboxes for fit type
+        fit_types = ["voight"]
+        initial_states = [True]
+        check_ax = self.fig.add_axes([0.66, 0.17, 0.11, 0.16])
+        check_ax.set_axis_off()
+        self.fit_check = CheckButtons(check_ax, fit_types, initial_states)
+
+        #add slider for integral width
+        integral_slider_ax = self.fig.add_axes([0.63, 0.08, 0.02, 0.15])
+        self.integral_slider = Slider(integral_slider_ax, "int\nWidth", valmin = 0, valmax = 30, valinit = 0, orientation = "vertical", valstep = 1)
+
         #buttons
-        fit_button_ax = self.fig.add_axes([0.85, 0.13, 0.1, 0.05])
+        fit_button_ax = self.fig.add_axes([0.66, 0.13, 0.05, 0.05])
         self.fit_button = Button(fit_button_ax, "Fit")
 
-        peak_button_ax = self.fig.add_axes([0.85, 0.07, 0.1, 0.05])
+        peak_button_ax = self.fig.add_axes([0.66, 0.07, 0.05, 0.05])
         self.peak_button = Button(peak_button_ax, "Add Peak")
+    
+    def setup_auto_section(self):
+        outline = patches.Rectangle((0.74, 0.2), 0.16, 0.15, fill = True, facecolor = "bisque", edgecolor = "k", figure = self.fig, zorder = 0)
+        self.fig.add_artist(outline)
+        self.fig.text(0.82, 0.33, "Auto Locator", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
+
+        find_peak_button_ax = self.fig.add_axes([0.77, 0.21, 0.07, 0.03])
+        self.find_peak_button = Button(find_peak_button_ax, "Find Peaks")
+
+        auto_background_slider_ax = self.fig.add_axes([0.79, 0.25, 0.08, 0.03])
+        self.auto_background_slider = Slider(auto_background_slider_ax, "Threshold", valmin = 0, valmax = max(self.img.lineout), valinit = 0)
+        auto_width_slider_ax = self.fig.add_axes([0.79, 0.28, 0.08, 0.03])
+        self.auto_width_slider = Slider(auto_width_slider_ax, "Width ", valmin = 1, valmax = 30, valinit = 1, valstep = 1)
+
+    def setup_measurement_section(self):
+        outline = patches.Rectangle((0.74, 0.05), 0.16, 0.14, fill = True, facecolor = "lavender", alpha = 1, edgecolor = "k", figure = self.fig, zorder = 0)
+        self.fig.add_artist(outline)
+        self.fig.text(0.82, 0.17, "Measure", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
+
+        measurement_width_slider_ax = self.fig.add_axes([0.78, 0.1, 0.11, 0.03])
+        self.measurement_width_slider = Slider(measurement_width_slider_ax, "Width ", valmin = 1, valmax = 30, valinit = 1, valstep = 1)
+        peak_num_slider_ax = self.fig.add_axes([0.78, 0.13, 0.11, 0.03])
+        self.peak_num_slider = Slider(peak_num_slider_ax, "Peak # ", valmin = 1, valmax = 30, valinit = 1, valstep = 1)
+
+        #checkbox
+        self.fig.text(0.745, 0.07, "Method: ")
+        #checkboxes for fit type
+        fit_types = ["voight", "alamgir"]
+        initial_states = [True, False]
+        check_ax = self.fig.add_axes([0.78, 0.05, 0.06, 0.05])
+        check_ax.set_axis_off()
+        self.auto_fit_check = CheckButtons(check_ax, fit_types, initial_states)
+
+        #buttons
+        fit_button_ax = self.fig.add_axes([0.84, 0.06, 0.025, 0.03])
+        self.auto_fit_button = Button(fit_button_ax, "Fit")
+        add_button_ax = self.fig.add_axes([0.87, 0.06, 0.025, 0.03])
+        self.auto_add_button = Button(add_button_ax, "Add")
 
     def initialize_plot(self):
         self.img.plot_lineout(self.lineout_ax)
@@ -148,6 +212,25 @@ class Plotter:
         self.peak_loc_slider.set_val((peak_min, peak_max))
         self.peak_min.set_xdata([peak_min])
         self.peak_max.set_xdata([peak_max])
+
+    def auto_find_peaks(self, val):
+        '''
+        automatically find the peaks
+        '''
+        #remove any current peaks
+        if self.peaks_found == True:
+            for label in self.auto_peak_labels:
+                label.remove()
+        self.auto_peak_labels = []
+        min_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[0]))
+        max_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[1]))
+        x_peaks, intensities = self.img.find_peaks(threshold = self.auto_background_slider.val, width = self.auto_width_slider.val, index_bounds = [min_bound, max_bound])
+        for num, intensity, peak in zip(np.arange(len(x_peaks)), intensities, x_peaks):
+            print(peak, intensity)
+            label = self.lineout_ax.text(peak, intensity, f"{num}", c = "white", bbox=dict(facecolor='red', edgecolor='black', boxstyle='round,pad=0.3'))
+            self.auto_peak_labels.append(label)
+        self.peaks_found = True
+        self.fig.canvas.draw_idle()
 
     def update_peak_slider(self, val):
         for c, peak_line in enumerate([self.peak_min, self.peak_max]):
@@ -198,6 +281,7 @@ class Plotter:
         self.background_slider.on_changed(self.update_background_slider)
         self.fit_button.on_clicked(self.click_fit)
         self.peak_button.on_clicked(self.click_add_peak)
+        self.find_peak_button.on_clicked(self.auto_find_peaks)
 
     def show(self):
         self.set_widgets()

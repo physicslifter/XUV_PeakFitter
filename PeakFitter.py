@@ -5,6 +5,7 @@ import os
 import pandas as pd
 import tifffile as tiff
 import numpy as np
+from scipy.signal import find_peaks
 
 class LinearCalibration:
     def __init__(self, m, b):
@@ -70,4 +71,27 @@ class XUVImage:
             interval = int(len(self.pixels)/5)
             ax.set_xticks(np.arange(len(self.wavelengths))[::interval])
             ax.set_xticklabels(np.round(self.wavelengths[::interval], 1))
+
+    def find_peaks(self, threshold=0.0, width=1, index_bounds = None):
+        if type(index_bounds) == type(None):
+            lineout_data = self.lineout
+            x_data = self.wavelengths if self.has_wavelengths == True else self.pixels
+        else:
+            lineout_data = self.lineout[index_bounds[0]:index_bounds[1]]
+            x_data = self.wavelengths[index_bounds[0]:index_bounds[1]] if self.has_wavelengths == True else self.pixels[index_bounds[0]:index_bounds[1]]
+        # Make sure we actually have a lineout
+        if not getattr(self, "has_lineout", False):
+            raise RuntimeError("Lineout has not been computed. Call take_lineout() first.")
+
+        # Use scipy's robust peak finder
+        peaks_idx, properties = find_peaks(
+            lineout_data,
+            height=threshold,   # amplitude threshold
+            width=width         # minimum peak width in pixels
+        )
+        peak_x = x_data[peaks_idx]
+        intensity_x = lineout_data[peaks_idx]
+        print(peak_x, intensity_x)
+        return peak_x, intensity_x
+
             
