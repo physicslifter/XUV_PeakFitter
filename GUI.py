@@ -4,6 +4,8 @@ import matplotlib.patches as patches
 from PeakFitter import *
 from scipy.optimize import curve_fit
 from scipy.special import wofz
+from pdb import set_trace as st
+from adjustText import adjust_text
 
 
 def add_row(table, row_values):
@@ -43,11 +45,15 @@ class XUVPeak:
         self.xdata = xdata
         self.ydata = ydata
         self.background = background
+        self.has_width = False
 
-    def fit_peak(self):
+    def fit_peak(self, width = None):
         '''
         Fits peak to a Voigt profile
         '''
+        if type(width) != type(None):
+            self.has_width = True
+            self.width = width
         amp_guess = np.max(self.ydata) - np.min(self.ydata)
         x0_guess = self.xdata[np.argmax(self.ydata)]
         sigma_guess = (self.xdata[-1] - self.xdata[0])/50
@@ -70,25 +76,130 @@ class XUVPeak:
         ax.set_xlabel(r"$\lambda$ (nm)")
         ax.set_ylabel("Intensity (a.u.)")
         ax.set_title(f"Peak Fit @ {np.round(self.x0, 3)}")
-        ax.legend()
         #get area under curve
-        area = np.trapz(self.fit_line, self.xdata)
+        if self.has_width == False:
+            area = np.trapz(self.fit_line, self.xdata)
+            x_data = self.xdata
+            fit_data = self.fit_line
+            min_loc = 0
+            max_loc = -1
+        else:
+            #get area w/in width & show
+            peak_loc = np.argmin(np.abs(self.xdata - self.x0))
+            min_loc = peak_loc - int(self.width/2)
+            max_loc = peak_loc + int(self.width/2)
+            x_data = self.xdata[min_loc:max_loc]
+            fit_data = self.fit_line[min_loc:max_loc]
+            area = np.trapz(fit_data, x_data)
+            #show lines
+            #for val in [self.xdata[min_loc], self.xdata[max_loc], self.x0]:
+            #    ax.axvline(x = val, c = "magenta")
+        pixel_per_wavelength = len(self.xdata)/(max(self.xdata) - min(self.xdata))
+        #min_wav = min_loc*pixel_per_wavelength + min(self.xdata)
+        #max_wav = max_loc*pixel_per_wavelength + min(self.xdata)
+        #min_wav = self.xdata[min_loc]
+        #max_wav = self.xdata[max_loc]
+        background_data = np.ones_like(fit_data)*self.background
+        fill_between_xdata = self.xdata[min_loc:max_loc] if self.has_width == True else self.xdata 
+        ax.fill_between(x = fill_between_xdata, y1 = background_data, y2 = fit_data, color  = "red", alpha = 0.4, label = "Area")
         #show values
+        ax.legend()
         fig.text(0.5, 0.01, f"Integral: {area}\nAmp: {self.amp}\nCenter: {self.x0}\n$\sigma$: {self.sigma}\n$\gamma$: {self.gamma}\noffset: {self.background}")
         plt.show()
 
     def get_peak(self, new_xdata):
         #given a different x, this function returns the peak profile for this x
         return voigt(new_xdata, self.amp, self.x0, self.sigma, self.gamma, self.background)
+    
+class AlamgirPeak:
+    def __init__(self, xdata, ydata, background, peak_x, peak_y, min_wavelength):
+        self.xdata = xdata
+        self.ydata = ydata
+        self.background = background
+        self.peak_x = peak_x
+        self.peak_y = peak_y
+        self.has_area = False
+        self.min_wavelength = min_wavelength
+
+    def get_area(self, width):
+        areas = []
+        self.width = width
+        #print(self.width/2)
+        for x in [-1, 0, 1]:
+            bounds = [int(self.peak_x - width/2 + x), int(self.peak_x + width/2 + x)]
+            for c, bound in enumerate(bounds):
+                val = np.argmin(np.abs(bound - self.xdata))
+                bounds[c] = val
+                print(bounds)
+            #print(bounds)
+            intensities = self.ydata[bounds[0]:bounds[1]]
+            areas.append(np.sum(intensities))
+        self.has_area = True
+        self.area = np.mean(areas)
+        return self.area
+    
+    def show_fit(self, ax=None, wavelengths=None, color="red"):
+        if self.has_area == False:
+            raise Exception("Peak does not have area")
+        if type(ax) == type(None):
+            fig = plt.figure(figsize = (8, 8))
+            ax = fig.add_subplot(1, 1, 1)
+            fig.subplots_adjust(bottom = 0.2)
+            input_ax = False
+        else:
+            input_ax = True
+        for x in [-1, 0, 1]:
+            if x == -1:
+                data_bounds = [int(self.peak_x - self.width/2 + x - self.width*2), int(self.peak_x + self.width/2 + x + self.width*2)]
+                for c, bound in enumerate(data_bounds):
+                    val = np.argmin(np.abs(bound - self.xdata))
+                    data_bounds[c] = val
+                xdata = self.xdata[data_bounds[0]:data_bounds[1]]
+                intensities = self.ydata[data_bounds[0]:data_bounds[1]]
+                if type(wavelengths) == type(None):
+                    ax.plot(xdata, intensities, label = "Raw Data", c = "blue")
+            bounds = [int(self.peak_x - self.width/2 + x), int(self.peak_x + self.width/2 + x)]
+            for c, bound in enumerate(bounds):
+                val = np.argmin(np.abs(bound - self.xdata))
+                bounds[c] = val
+                print(bounds)
+            print(self.xdata[bounds[0]])
+            region_bound_intensity = self.ydata[bounds[0]:bounds[1]]
+            region_bound_background = np.ones_like(region_bound_intensity)*self.background
+            region_x = self.xdata[bounds[0]:bounds[1]]
+            label = "Integral Regions" if x == -1 else None
+            label = label if input_ax == False else None
+            if type(wavelengths) != type(None):
+                min_wav_loc = np.argmin(np.abs(self.min_wavelength - wavelengths))
+                for c, bound in enumerate(bounds):
+                    bounds[c] = bound + min_wav_loc
+                print(bounds, len(wavelengths))
+                region_x = wavelengths[bounds[0]:bounds[1]]
+            print(len(region_x), len(region_bound_background), len(region_bound_intensity))
+            ax.fill_between(x = region_x, y1 = region_bound_background, y2 = region_bound_intensity, color = color, alpha = 0.2, label = label)
+        if input_ax == False:
+            fig.text(0.5, 0.01, f"Integral: {self.area}\nAmp: {self.peak_y}\nCenter: {self.peak_x}\noffset: {self.background}")
+            ax.set_xlabel(r"$\lambda$ (nm)")
+            ax.set_ylabel("Intensity (a.u.)")
+            ax.set_title(f"Peak Fit @ {np.round(self.peak_x, 3)}")
+            ax.legend()
+            #print(data_bounds)
+            #print(xdata)
+            #print(self.xdata)
+            plt.show()
+        
 
 class Plotter:
     def __init__(self, fname, calibration:LinearCalibration):
         self.fname = fname
+        self.calibration = calibration
         self.has_fit = False #set has_fit to false
+        self.has_auto_fit = False
         self.peaks_found = False #boolean control for auto peak finder
         self.num_peaks_measured = 0 #initialize w/ 0 measured peaks
         self.peak_colors = ["magenta", "orange", "lime", "gold", "mediumspringgreen"]
         self.measured_peak_lines = []
+        self.measurement_labels = []
         self.img = XUVImage(fname)
         self.img.take_lineout()
         self.img.apply_linear_calibration(calibration)
@@ -129,7 +240,7 @@ class Plotter:
                                     )
         
         for key, cell in self.peak_table.get_celld().items():
-            cell.set_height(0.1)
+            cell.set_height(0.07)
             cell.set_width(0.2)
 
     def setup_manual_section(self):
@@ -175,7 +286,7 @@ class Plotter:
         self.fig.text(0.82, 0.17, "Measure", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
 
         measurement_width_slider_ax = self.fig.add_axes([0.78, 0.1, 0.11, 0.03])
-        self.measurement_width_slider = Slider(measurement_width_slider_ax, "Width ", valmin = 1, valmax = 30, valinit = 1, valstep = 1)
+        self.measurement_width_slider = Slider(measurement_width_slider_ax, "Width ", valmin = 0, valmax = 30, valinit = 0, valstep = 1)
         peak_num_slider_ax = self.fig.add_axes([0.78, 0.13, 0.11, 0.03])
         self.peak_num_slider = Slider(peak_num_slider_ax, "Peak # ", valmin = 1, valmax = 30, valinit = 1, valstep = 1)
 
@@ -224,11 +335,16 @@ class Plotter:
         self.auto_peak_labels = []
         min_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[0]))
         max_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[1]))
-        x_peaks, intensities = self.img.find_peaks(threshold = self.auto_background_slider.val, width = self.auto_width_slider.val, index_bounds = [min_bound, max_bound])
-        for num, intensity, peak in zip(np.arange(len(x_peaks)), intensities, x_peaks):
-            print(peak, intensity)
+        peak_locs, x_peaks, intensities, peak_props = self.img.find_peaks(threshold = self.auto_background_slider.val, width = self.auto_width_slider.val, index_bounds = [min_bound, max_bound])
+        #st()
+        self.peaks = {"pixel_locs": peak_locs, "x_locs": x_peaks, "y_locs": intensities, "props": peak_props}
+        for num, intensity, peak, width, prominence in zip(np.arange(len(x_peaks)), intensities, x_peaks, peak_props["widths"], peak_props["prominences"]):
+            print(peak, intensity, width)
             label = self.lineout_ax.text(peak, intensity, f"{num}", c = "white", bbox=dict(facecolor='red', edgecolor='black', boxstyle='round,pad=0.3'))
             self.auto_peak_labels.append(label)
+            #show peak width
+            #width = self.calibration.convert_pixels_to_wavelength(width)
+            #self.lineout_ax.plot([peak - width/2, peak + width/2], [(prominence)/2 + intensity - prominence, (prominence)/2 + intensity - prominence], c = "red")
         self.peaks_found = True
         self.fig.canvas.draw_idle()
 
@@ -245,21 +361,24 @@ class Plotter:
         xdata = self.img.wavelengths[min_bound:max_bound]
         ydata = self.img.lineout[min_bound:max_bound]
         peak = XUVPeak(xdata, ydata, background = self.background_slider.val)
-        peak.fit_peak()
+        width = self.integral_slider.val
+        width = None if width == 0 else width
+        print(f"width: {width}")
+        peak.fit_peak(width = width)
         self.peak = peak
         self.has_fit = True
         peak.show_fit()
 
-    def add_peak_to_table(self, area):
+    def add_peak_to_table(self, area, method):
         '''
         helper function for click_add_peak
         adds all peak info to the peak dictionary
         which will be saved as csv
         '''
-        vals = [self.num_peaks_measured, np.round(self.peak.x0, 5), np.round(self.peak.amp, 5), np.round(area, 5)]
+        vals = [self.num_peaks_measured, np.round(self.peak.x0, 5), np.round(self.peak.amp, 5), np.round(area, 5), method]
         if self.num_peaks_measured > 0:
             #if this is not the first peak, add a blank row
-            add_row(self.peak_table, ["", "", ""])
+            add_row(self.peak_table, ["", "", "", ""])
         update_row(self.peak_table, self.num_peaks_measured + 1, vals)
 
     def click_add_peak(self, val):
@@ -269,11 +388,95 @@ class Plotter:
             area = np.trapz(full_peak, self.img.wavelengths)
             peak_line = self.lineout_ax.plot(self.img.wavelengths, full_peak, linestyle = "--", linewidth = 1, c = self.peak_colors[self.num_peaks_measured], label = self.num_peaks_measured)
             self.measured_peak_lines.append(peak_line)
-            self.add_peak_to_table(area)
+            self.add_peak_to_table(area, method = "Manual Voight")
             self.num_peaks_measured += 1
             self.lineout_ax.legend()
             self.fig.canvas.draw_idle()
             print("peak added")
+
+    def click_auto_fit(self, val):
+        '''
+        Function to execute upon clicking fit button in Measure box:
+            1. Get peak num
+            2. get Fit type
+                for Voight:
+                    1. define fit area
+                    2. Get voight peak and make fit, generate report
+                    3. save peak in case we click add button
+        '''
+        #method = self.auto_fit_check.labels[self.auto_fit_check.get_status()]
+        #print(method)
+        labels = self.auto_fit_check.labels
+        checks = self.auto_fit_check.get_status()
+        method = labels[checks.index(True)].get_text()
+        self.method = method
+        print(method)
+        peak_num = self.peak_num_slider.val
+        peak_x = self.peaks["pixel_locs"][peak_num]
+        peak_y = self.peaks["y_locs"][peak_num]
+        peak_width = self.peaks["props"]["widths"][peak_num]
+        min_loc = int(peak_x - peak_width*1.2)
+        max_loc = int(peak_x + peak_width*1.2)
+        xdata = self.img.pixels[min_loc:max_loc]
+        ydata = self.img.lineout[min_loc:max_loc]
+        self.has_auto_fit = True
+        if method == "voight":
+            peak = XUVPeak(xdata, ydata, background = self.background_slider.val)
+            width = self.measurement_width_slider.val
+            if width == 0:
+                width = None
+            peak.fit_peak(width = width)
+            self.peak = peak
+            self.has_fit = True
+            self.auto_peak = peak
+            peak.show_fit()
+        elif method == "alamgir":
+            peak = AlamgirPeak(xdata, ydata, background = self.background_slider.val, peak_x = peak_x, peak_y = peak_y, min_wavelength = self.img.wavelengths[min_loc])
+            peak.x0 = self.img.wavelengths[peak_x]
+            peak.amp = peak_y
+            print(self.measurement_width_slider.val, type(self.measurement_width_slider.val))
+            width = self.measurement_width_slider.val
+            width = width + 1 if width%2 == 1 else width
+            peak.get_area(width = width)
+            #peak.area = self.calibration.convert_numpixels_to_wavelength(peak.area)
+            self.auto_peak = peak
+            self.peak = peak
+            peak.show_fit()
+
+    def click_auto_add(self, val):
+        if self.has_auto_fit == True:
+            if self.method == "voight":
+                full_peak = self.auto_peak.get_peak(np.arange(len(self.img.wavelengths)))
+                self.lineout_ax.plot(self.img.wavelengths, full_peak, c = "gold", linestyle = "--")
+                if self.measurement_width_slider.val == 0:
+                    self.lineout_ax.fill_between(self.img.wavelengths, np.ones_like(full_peak)*self.background_slider.val, full_peak, color = "gold", alpha = 0.1)
+                    area = np.trapz(full_peak, self.img.wavelengths)
+                else:
+                    peak_loc = np.argmin(np.abs(self.peak.xdata - self.peak.x0))
+                    min_loc = peak_loc - int(self.peak.width/2)
+                    max_loc = peak_loc + int(self.peak.width/2)
+                    x_data = self.peak.xdata[min_loc:max_loc]
+                    fit_data = self.peak.fit_line[min_loc:max_loc]
+                    area = np.trapz(fit_data, x_data)
+                    background_data = np.ones_like(fit_data)*self.peak.background
+                    fill_between_xdata = self.peak.xdata[min_loc:max_loc]*self.calibration.m + self.calibration.b
+                    self.lineout_ax.fill_between(x = fill_between_xdata, y1 = background_data, y2 = fit_data, color  = "gold", alpha = 0.1)
+                self.add_peak_to_table(area, method = "Auto Voight")
+            elif self.method == "alamgir":
+                self.peak.show_fit(ax = self.lineout_ax, wavelengths = self.img.wavelengths, color = "cyan")
+                self.add_peak_to_table(self.peak.area, "Auto Alamgir")
+            peak_num = self.peak_num_slider.val
+            peak_x = self.peaks["pixel_locs"][peak_num]
+            peak_y = self.peaks["y_locs"][peak_num]
+            label = self.lineout_ax.text(peak_x, peak_y, f"{self.num_peaks_measured}", c = "white", bbox=dict(facecolor='green', edgecolor='black', boxstyle='round,pad=0.3'))
+            self.measurement_labels.append(label)
+            adjust_text(self.measurement_labels, ax = self.lineout_ax, arrowprops=dict(arrowstyle='-', color='gray', lw=1))
+            self.num_peaks_measured += 1
+            self.lineout_ax.legend()
+            self.fig.canvas.draw_idle()
+            print("peak added")
+
+
 
     def set_widgets(self):
         self.x_zoom_slider.on_changed(self.update_xrange_slider)
@@ -282,6 +485,8 @@ class Plotter:
         self.fit_button.on_clicked(self.click_fit)
         self.peak_button.on_clicked(self.click_add_peak)
         self.find_peak_button.on_clicked(self.auto_find_peaks)
+        self.auto_fit_button.on_clicked(self.click_auto_fit)
+        self.auto_add_button.on_clicked(self.click_auto_add)
 
     def show(self):
         self.set_widgets()

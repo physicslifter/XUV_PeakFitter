@@ -12,6 +12,12 @@ class LinearCalibration:
         self.m = m
         self.b = b
 
+    def convert_numpixels_to_wavelength(self, num_pixels):
+        return num_pixels*self.m
+
+    def convert_wavelength_to_numpixels(self, wavelength):
+        return wavelength/self.m
+
 class XUVImage:
     def __init__(self, fname):
         self.has_wavelengths = False
@@ -92,6 +98,6 @@ class XUVImage:
         peak_x = x_data[peaks_idx]
         intensity_x = lineout_data[peaks_idx]
         print(peak_x, intensity_x)
-        return peak_x, intensity_x
+        return peaks_idx, peak_x, intensity_x, properties
 
             

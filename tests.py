@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from GUI import *
 
 #=====
-test_img = "../../../Downloads/400um_spot_size/500mJ/xuv/al4_sig.tif"
+test_img = "../../../Downloads/400um_spot_size/500mJ/xuv/al8_sig.tif"
 #=====
 
 #=====
@@ -39,7 +39,8 @@ if test_basic_lineout == True:
 
 #=====
 if test_GUI == True:
-    calibration = LinearCalibration(m = 0.00614, b = 6.832)
+    #calibration = LinearCalibration(m = 0.00614, b = 6.832)
+    calibration = LinearCalibration(m = 1, b = 0)
     plotter = Plotter(test_img, calibration)
 
 #=====
