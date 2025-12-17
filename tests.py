@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from GUI import *
 
 #=====
-test_img = "../../../Downloads/400um_spot_size/500mJ/xuv/al8_sig.tif"
+test_img = "../../../Downloads/400um_spot_size/500mJ/xuv/alfs6_sig.tif"
 #=====
 
 #=====

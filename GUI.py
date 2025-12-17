@@ -1,5 +1,5 @@
 from matplotlib import pyplot as plt
-from matplotlib.widgets import Slider, RangeSlider, Button, CheckButtons
+from matplotlib.widgets import Slider, RangeSlider, Button, CheckButtons, TextBox
 import matplotlib.patches as patches
 from PeakFitter import *
 from scipy.optimize import curve_fit
@@ -200,6 +200,7 @@ class Plotter:
         self.peak_colors = ["magenta", "orange", "lime", "gold", "mediumspringgreen"]
         self.measured_peak_lines = []
         self.measurement_labels = []
+        self.auto_peaks = {}
         self.img = XUVImage(fname)
         self.img.take_lineout()
         self.img.apply_linear_calibration(calibration)
@@ -209,7 +210,7 @@ class Plotter:
 
     def setup_plot(self):
         self.fig = plt.figure(figsize = (15, 8))
-        self.lineout_ax = self.fig.add_axes([0.1, 0.25, 0.5, 0.65])
+        self.lineout_ax = self.fig.add_axes([0.05, 0.4, 0.55, 0.55])
         self.lineout_ax.set_title(f"{self.fname.split('/')[-1]}")
         self.lineout_ax.set_xlabel(r"$\lambda$ $(nm)$")
         self.lineout_ax.set_ylabel(r"$Intensity$ $(a.u.)$")
@@ -218,8 +219,14 @@ class Plotter:
         self.setup_manual_section()
         self.setup_auto_section()
         self.setup_measurement_section()
+        self.setup_labeler_section()
+        self.setup_finalization_section()
 
     def setup_manual_sliders(self):
+        outline = patches.Rectangle((0.02, 0.05), 0.58, 0.2, fill = True, facecolor = "mintcream", edgecolor = "k", figure = self.fig, zorder = 0)
+        self.fig.add_artist(outline)
+        self.fig.text(0.3, 0.22, "Manual Locator", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
+
         self.x_zoom_slider_ax = self.fig.add_axes([0.1, 0.15, 0.42, 0.05])
         self.x_zoom_slider = RangeSlider(self.x_zoom_slider_ax, "X range", min(self.img.wavelengths), max(self.img.wavelengths), valinit = (min(self.img.wavelengths), max(self.img.wavelengths)))
 
@@ -233,21 +240,25 @@ class Plotter:
         table_ax = self.fig.add_axes([0.62, 0.35, 0.35, 0.5])
         table_ax.set_axis_off()
         table_ax.set_title("Measured Peaks")
-        self.peak_table = table_ax.table(cellText = [["", "", "", "", ""]],
+        self.peak_table = table_ax.table(cellText = [["", "", "", "", "", ""]],
                                     rowLabels = [""],
-                                    colLabels = ["#", "Loc", "Amp", "Area", "Measurement\nMethod"],
+                                    colLabels = ["#", "Label", "Loc", "Amp", "Area", "Measurement\nMethod"],
                                     loc = "center"
                                     )
         
-        for key, cell in self.peak_table.get_celld().items():
-            cell.set_height(0.07)
-            cell.set_width(0.2)
+        for (row, col_idx), cell in self.peak_table.get_celld().items():
+            height = 0.14 if row == 0 else 0.07
+            cell.set_height(height)
+            width = 0.15 if col_idx in [0, 2, 3, 4] else 0.2
+            width = 0.08 if col_idx == 0 else width
+            cell.set_width(width)
+        self.peak_table.set_fontsize(14)
 
     def setup_manual_section(self):
         #outline section
         outline = patches.Rectangle((0.62, 0.05), 0.11, 0.3, fill = True, facecolor = "lightcyan", edgecolor = "k", figure = self.fig, zorder = 0)
         self.fig.add_artist(outline)
-        self.fig.text(0.675, 0.31, "Manual\nLocator", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
+        self.fig.text(0.675, 0.31, "Manual\nMeasure", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
 
         #checkboxes for fit type
         fit_types = ["voight"]
@@ -283,12 +294,12 @@ class Plotter:
     def setup_measurement_section(self):
         outline = patches.Rectangle((0.74, 0.05), 0.16, 0.14, fill = True, facecolor = "lavender", alpha = 1, edgecolor = "k", figure = self.fig, zorder = 0)
         self.fig.add_artist(outline)
-        self.fig.text(0.82, 0.17, "Measure", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
+        self.fig.text(0.82, 0.17, "Auto Measure", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
 
         measurement_width_slider_ax = self.fig.add_axes([0.78, 0.1, 0.11, 0.03])
         self.measurement_width_slider = Slider(measurement_width_slider_ax, "Width ", valmin = 0, valmax = 30, valinit = 0, valstep = 1)
         peak_num_slider_ax = self.fig.add_axes([0.78, 0.13, 0.11, 0.03])
-        self.peak_num_slider = Slider(peak_num_slider_ax, "Peak # ", valmin = 1, valmax = 30, valinit = 1, valstep = 1)
+        self.peak_num_slider = Slider(peak_num_slider_ax, "Peak # ", valmin = 0, valmax = 30, valinit = 1, valstep = 1)
 
         #checkbox
         self.fig.text(0.745, 0.07, "Method: ")
@@ -304,6 +315,26 @@ class Plotter:
         self.auto_fit_button = Button(fit_button_ax, "Fit")
         add_button_ax = self.fig.add_axes([0.87, 0.06, 0.025, 0.03])
         self.auto_add_button = Button(add_button_ax, "Add")
+
+    def setup_labeler_section(self):
+        outline = patches.Rectangle((0.02, 0.26), 0.58, 0.07, fill = True, facecolor = "palegreen", edgecolor = "k", figure = self.fig, zorder = 0)
+        self.fig.add_artist(outline)
+        self.fig.text(0.06, 0.295, "Labeling", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
+
+        self.label_slider_ax = self.fig.add_axes([0.14, 0.27, 0.22, 0.05])
+        self.label_slider = Slider(ax  = self.label_slider_ax, label = "Peak no.", valmin = 0, valmax = 0, valinit = 0, valstep = 1)
+
+        label_entry_ax = self.fig.add_axes([0.42, 0.27, 0.1, 0.05])
+        self.label_entry = TextBox(label_entry_ax, "| Label ", initial = "0")
+
+        update_label_ax = self.fig.add_axes([0.53, 0.27, 0.05, 0.05])
+        self.update_label_button = Button(update_label_ax, "Update\nLabel", color = "salmon")
+
+    def setup_finalization_section(self):
+        finalize_button_ax = self.fig.add_axes([0.92, 0.06, 0.05, 0.08])
+        self.finalize_button = Button(finalize_button_ax, "Finalize\nPlot", color = "crimson")
+        self.finalize_button.label.set_color("azure")
+        self.finalize_button.label.set_weight("bold")
 
     def initialize_plot(self):
         self.img.plot_lineout(self.lineout_ax)
@@ -355,6 +386,10 @@ class Plotter:
     def update_background_slider(self, val):
         self.background_line.set_ydata([val])
 
+    def update_labeler_slider(self, val):
+        self.label_entry.set_val(self.auto_peaks[val]["label"])
+        self.fig.canvas.draw_idle()
+
     def click_fit(self, val):
         min_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[0]))
         max_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[1]))
@@ -375,11 +410,18 @@ class Plotter:
         adds all peak info to the peak dictionary
         which will be saved as csv
         '''
-        vals = [self.num_peaks_measured, np.round(self.peak.x0, 5), np.round(self.peak.amp, 5), np.round(area, 5), method]
+        vals = [self.num_peaks_measured, self.num_peaks_measured, np.round(self.peak.x0, 2), np.round(self.peak.amp, 2), np.round(area, 2), method]
         if self.num_peaks_measured > 0:
             #if this is not the first peak, add a blank row
-            add_row(self.peak_table, ["", "", "", ""])
+            add_row(self.peak_table, ["", "", "", "", "", ""])
         update_row(self.peak_table, self.num_peaks_measured + 1, vals)
+
+        #ensure cell dimensions
+        for (row, col_idx), cell in self.peak_table.get_celld().items():
+            cell.set_height(0.07)
+            width = 0.15 if col_idx in [0, 2, 3, 4] else 0.2
+            width = 0.08 if col_idx == 0 else width
+            cell.set_width(width)
 
     def click_add_peak(self, val):
         print(self.has_fit)
@@ -470,13 +512,30 @@ class Plotter:
             peak_y = self.peaks["y_locs"][peak_num]
             label = self.lineout_ax.text(peak_x, peak_y, f"{self.num_peaks_measured}", c = "white", bbox=dict(facecolor='green', edgecolor='black', boxstyle='round,pad=0.3'))
             self.measurement_labels.append(label)
-            adjust_text(self.measurement_labels, ax = self.lineout_ax, arrowprops=dict(arrowstyle='-', color='gray', lw=1))
+            adjust_text(self.measurement_labels, ax = self.lineout_ax, only_move = "y")
+            self.auto_peaks[self.num_peaks_measured] = {"loc": [peak_x, peak_y], "label": f"{self.num_peaks_measured}"}
             self.num_peaks_measured += 1
+
+            #update the peak no. slider for labeling
+            self.label_slider_ax.set_xlim(0, self.num_peaks_measured - 1)
+            self.label_slider.valmin = 0
+            self.label_slider.valmax = self.num_peaks_measured - 1
+
             self.lineout_ax.legend()
             self.fig.canvas.draw_idle()
             print("peak added")
 
-
+    def click_update_label(self, val):
+        label = self.measurement_labels[int(self.label_slider.val)]
+        label.set_text(self.label_entry.text)
+        self.auto_peaks[int(self.label_slider.val)]["label"] = self.label_entry.text
+        for c, label in enumerate(self.measurement_labels):
+            loc = self.auto_peaks[c]["loc"]
+            label.set_position((loc[0], loc[1]))
+        adjust_text(self.measurement_labels, ax = self.lineout_ax, only_move = "y")
+        #update label in table
+        self.peak_table[(self.label_slider.val + 1, 1)].get_text().set_text(self.label_entry.text)
+        self.fig.canvas.draw_idle()
 
     def set_widgets(self):
         self.x_zoom_slider.on_changed(self.update_xrange_slider)
@@ -487,6 +546,8 @@ class Plotter:
         self.find_peak_button.on_clicked(self.auto_find_peaks)
         self.auto_fit_button.on_clicked(self.click_auto_fit)
         self.auto_add_button.on_clicked(self.click_auto_add)
+        self.label_slider.on_changed(self.update_labeler_slider)
+        self.update_label_button.on_clicked(self.click_update_label)
 
     def show(self):
         self.set_widgets()
