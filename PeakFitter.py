@@ -7,6 +7,11 @@ import tifffile as tiff
 import numpy as np
 from scipy.signal import find_peaks
 
+#physics constants
+h = 6.626e-34 #J*s
+c = 2.998e+8
+joules_to_eV = 6.242e+18 #conversion from J to eV
+
 class LinearCalibration:
     def __init__(self, m, b):
         self.m = m
@@ -65,10 +70,20 @@ class XUVImage:
         '''
         if self.has_lineout == True:
             self.wavelengths = self.pixels*calibration.m + calibration.b
+            self.energy = joules_to_eV*h*c/(self.wavelengths[::-1]*10**-9)
         self.has_wavelengths = True
 
-    def plot_lineout(self, ax):
-        x_data = self.pixels if self.has_wavelengths == False else self.wavelengths
+    def plot_lineout(self, ax, x_axis:str=None):
+        if type(x_axis) == type(None):
+            x_data = self.pixels if self.has_wavelengths == False else self.wavelengths
+        elif x_axis == "wavelength":
+            x_data = self.wavelengths
+        elif x_axis == "pixels":
+            x_data = self.pixels
+        elif x_axis == "energy":
+            x_data = self.energy
+        else:
+            raise Exception(f"x-axis {x_axis} is invalid. Must be 'pixels', 'wavelength', or 'energy'")
         ax.plot(x_data, self.lineout, label = "Lineout", c = "dodgerblue", linewidth = 2)
 
     def plot_img(self, ax):
