@@ -67,15 +67,18 @@ class XUVPeak:
         self.amp, self.x0, self.sigma, self.gamma = amp, x0, sigma, gamma
         self.fit_line = voigt(self.xdata, amp, x0, sigma, gamma, self.background)
 
-    def show_fit(self):
-        fig = plt.figure(figsize = (8, 8))
-        ax = fig.add_subplot(1, 1, 1)
-        fig.subplots_adjust(bottom = 0.2)
+    def show_fit(self, ax = None):
+        has_ax = True
+        if ax == None:
+            fig = plt.figure(figsize = (8, 8))
+            ax = fig.add_subplot(1, 1, 1)
+            fig.subplots_adjust(bottom = 0.2)
+            ax.set_xlabel(r"$\lambda$ (nm)")
+            ax.set_ylabel("Intensity (a.u.)")
+            ax.set_title(f"Peak Fit @ {np.round(self.x0, 3)}")
+            has_ax = False
         ax.plot(self.xdata, self.ydata, label = "Raw Data", c = "blue")
         ax.plot(self.xdata, self.fit_line, label = "Voigt Fit", c = "magenta")
-        ax.set_xlabel(r"$\lambda$ (nm)")
-        ax.set_ylabel("Intensity (a.u.)")
-        ax.set_title(f"Peak Fit @ {np.round(self.x0, 3)}")
         #get area under curve
         if self.has_width == False:
             area = np.trapz(self.fit_line, self.xdata)
@@ -94,7 +97,6 @@ class XUVPeak:
             #show lines
             #for val in [self.xdata[min_loc], self.xdata[max_loc], self.x0]:
             #    ax.axvline(x = val, c = "magenta")
-        pixel_per_wavelength = len(self.xdata)/(max(self.xdata) - min(self.xdata))
         #min_wav = min_loc*pixel_per_wavelength + min(self.xdata)
         #max_wav = max_loc*pixel_per_wavelength + min(self.xdata)
         #min_wav = self.xdata[min_loc]
@@ -104,7 +106,8 @@ class XUVPeak:
         ax.fill_between(x = fill_between_xdata, y1 = background_data, y2 = fit_data, color  = "red", alpha = 0.4, label = "Area")
         #show values
         ax.legend()
-        fig.text(0.5, 0.01, f"Integral: {area}\nAmp: {self.amp}\nCenter: {self.x0}\n$\sigma$: {self.sigma}\n$\gamma$: {self.gamma}\noffset: {self.background}")
+        if has_ax == False:
+            fig.text(0.5, 0.01, f"Integral: {area}\nAmp: {self.amp}\nCenter: {self.x0}\n$\sigma$: {self.sigma}\n$\gamma$: {self.gamma}\noffset: {self.background}")
         plt.show()
 
     def get_peak(self, new_xdata):
@@ -149,7 +152,7 @@ class AlamgirPeak:
         else:
             input_ax = True
         for x in [-1, 0, 1]:
-            if x == -1:
+            if x == -1 and input_ax == False:
                 data_bounds = [int(self.peak_x - self.width/2 + x - self.width*2), int(self.peak_x + self.width/2 + x + self.width*2)]
                 for c, bound in enumerate(data_bounds):
                     val = np.argmin(np.abs(bound - self.xdata))
@@ -162,8 +165,8 @@ class AlamgirPeak:
             for c, bound in enumerate(bounds):
                 val = np.argmin(np.abs(bound - self.xdata))
                 bounds[c] = val
-                print(bounds)
-            print(self.xdata[bounds[0]])
+                #print(bounds)
+            print(self.xdata[bounds[0]], bounds)
             region_bound_intensity = self.ydata[bounds[0]:bounds[1]]
             region_bound_background = np.ones_like(region_bound_intensity)*self.background
             region_x = self.xdata[bounds[0]:bounds[1]]
@@ -173,9 +176,9 @@ class AlamgirPeak:
                 min_wav_loc = np.argmin(np.abs(self.min_wavelength - wavelengths))
                 for c, bound in enumerate(bounds):
                     bounds[c] = bound + min_wav_loc
-                print(bounds, len(wavelengths))
+                #print(bounds, len(wavelengths))
                 region_x = wavelengths[bounds[0]:bounds[1]]
-            print(len(region_x), len(region_bound_background), len(region_bound_intensity))
+            #print(len(region_x), len(region_bound_background), len(region_bound_intensity))
             ax.fill_between(x = region_x, y1 = region_bound_background, y2 = region_bound_intensity, color = color, alpha = 0.2, label = label)
         if input_ax == False:
             fig.text(0.5, 0.01, f"Integral: {self.area}\nAmp: {self.peak_y}\nCenter: {self.peak_x}\noffset: {self.background}")
@@ -187,7 +190,17 @@ class AlamgirPeak:
             #print(xdata)
             #print(self.xdata)
             plt.show()
-        
+
+def get_alamgir_peak(img, data_bounds, background):
+    #given some data, return an Alamgir peak with this data
+    peak_locs, x_peaks, intensities, peak_props = img.find_peaks(threshold = background, width = 2, index_bounds = data_bounds)
+    return AlamgirPeak(xdata = img.pixels[data_bounds[0]:data_bounds[1]],
+                       ydata = img.lineout[data_bounds[0]:data_bounds[1]],
+                       background = background,
+                       peak_x = x_peaks[0],
+                       peak_y = intensities[0],
+                       min_wavelength = min(img.wavelengths)
+                       )
 
 class Plotter:
     def __init__(self, fname, calibration:LinearCalibration):
