@@ -101,7 +101,8 @@ if demo_x_axis == True:
 
         #get & plot Alamgir's method
         peak_loc = [710, 730]
-        alamgir_peak = get_alamgir_peak(img = img, data_bounds = peak_loc, background = 0)
+        alamgir_peak = get_AP2(img = img, data_bounds = peak_loc, background = 0, xdata = axis_type)
+        #print(alamgir_peak.real_x_data)
         alamgir_peak.get_area(width = 10)
         alamgir_peak.show_fit(ax = ax)
         

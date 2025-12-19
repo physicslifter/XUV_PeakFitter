@@ -191,6 +191,47 @@ class AlamgirPeak:
             #print(self.xdata)
             plt.show()
 
+class AP2:
+    """
+    Updated class for Alamgir peak that should work regardless of the x-axis
+    """
+    def __init__(self, full_x_data, full_y_data, peak_x_loc, width):
+        self.xdata = np.arange(len(full_x_data))
+        self.real_x_data = full_x_data
+        self.ydata = full_y_data
+        self.peak_loc = peak_x_loc
+        self.width = width
+
+    def get_area(self, width:float=None):
+        areas = []
+        self.area_intensities = []
+        self.area_x_locs = []
+        width = self.width if type(width) == type(None) else width
+        for x in [-1, 0, 1]:
+            bounds = [int(self.peak_loc - width/2 + x), int(self.peak_loc + width/2 + x)]
+            for c, bound in enumerate(bounds):
+                val = np.argmin(np.abs(bound - self.xdata))
+                bounds[c] = val
+                #print(bounds)
+            #print(bounds)
+            intensities = self.ydata[bounds[0]:bounds[1]]
+            self.area_intensities.append(intensities)
+            self.area_x_locs.append(self.real_x_data[bounds[0]:bounds[1]])
+            areas.append(np.sum(intensities))
+        return np.mean(areas)
+
+    def show_fit(self, ax=None):
+        if type(ax) == type(None):
+            fig = plt.figure()
+            ax = fig.add_subplot(1, 1, 1)
+        #print(self.area_x_locs[0], self.area_intensities[0])
+        for area_x_loc, area_intensity in zip(self.area_x_locs, self.area_intensities):
+            bg = np.ones_like(area_x_loc)
+            print(min(area_x_loc), max(area_x_loc), min(area_intensity), max(area_intensity), "HI")
+            ax.fill_between(x = area_x_loc, y1 = bg, y2 = area_intensity, color = "teal", alpha = 0.1)
+
+
+
 def get_alamgir_peak(img, data_bounds, background):
     #given some data, return an Alamgir peak with this data
     peak_locs, x_peaks, intensities, peak_props = img.find_peaks(threshold = background, width = 2, index_bounds = data_bounds)
@@ -201,6 +242,22 @@ def get_alamgir_peak(img, data_bounds, background):
                        peak_y = intensities[0],
                        min_wavelength = min(img.wavelengths)
                        )
+
+def get_AP2(img, data_bounds, background, xdata="pixels"):
+    if xdata not in ["pixels", "wavelength", "energy"]:
+        raise Exception(f"xdata {xdata} is invalid. must be 'wavelength', 'pixels', or 'energy'")
+    if xdata == "pixels":
+        my_x = img.pixels
+    elif xdata == "wavelength":
+        my_x = img.wavelengths
+    else:
+        my_x = img.energy
+    peak_locs, x_peaks, intensities, peak_props = img.find_peaks(threshold = background, width = 2, index_bounds = data_bounds)
+    print(peak_locs)
+    return AP2(full_x_data = my_x,
+               full_y_data = img.lineout,
+               peak_x_loc = peak_locs[0] + data_bounds[0],
+               width = peak_props["widths"][0])
 
 class Plotter:
     def __init__(self, fname, calibration:LinearCalibration):
@@ -383,7 +440,7 @@ class Plotter:
         #st()
         self.peaks = {"pixel_locs": peak_locs, "x_locs": x_peaks, "y_locs": intensities, "props": peak_props}
         for num, intensity, peak, width, prominence in zip(np.arange(len(x_peaks)), intensities, x_peaks, peak_props["widths"], peak_props["prominences"]):
-            print(peak, intensity, width)
+            #print(peak, intensity, width)
             label = self.lineout_ax.text(peak, intensity, f"{num}", c = "white", bbox=dict(facecolor='red', edgecolor='black', boxstyle='round,pad=0.3'))
             self.auto_peak_labels.append(label)
             #show peak width
