@@ -1,5 +1,5 @@
 from matplotlib import pyplot as plt
-from matplotlib.widgets import Slider, RangeSlider, Button, CheckButtons, TextBox
+from matplotlib.widgets import Slider, RangeSlider, Button, CheckButtons, TextBox, RadioButtons
 import matplotlib.patches as patches
 from PeakFitter import *
 from scipy.optimize import curve_fit
@@ -291,6 +291,7 @@ class Plotter:
         self.setup_measurement_section()
         self.setup_labeler_section()
         self.setup_finalization_section()
+        self.setup_x_axis_section()
 
     def setup_manual_sliders(self):
         outline = patches.Rectangle((0.02, 0.05), 0.58, 0.2, fill = True, facecolor = "mintcream", edgecolor = "k", figure = self.fig, zorder = 0)
@@ -401,10 +402,18 @@ class Plotter:
         self.update_label_button = Button(update_label_ax, "Update\nLabel", color = "salmon")
 
     def setup_finalization_section(self):
-        finalize_button_ax = self.fig.add_axes([0.92, 0.06, 0.05, 0.08])
+        finalize_button_ax = self.fig.add_axes([0.92, 0.05, 0.05, 0.08])
         self.finalize_button = Button(finalize_button_ax, "Finalize\nPlot", color = "crimson")
         self.finalize_button.label.set_color("azure")
         self.finalize_button.label.set_weight("bold")
+
+    def setup_x_axis_section(self):
+        outline = patches.Rectangle((0.91, 0.15), 0.07, 0.2, fill = True, facecolor = "whitesmoke", edgecolor = "k", figure = self.fig, zorder = 0)
+        self.fig.add_artist(outline)
+        radio_ax = self.fig.add_axes([0.92, 0.16, 0.05, 0.15])
+        radio_ax.set_facecolor("pink")
+        self.x_radio = RadioButtons(radio_ax, ("Pixels", r"$\lambda$ $(nm)$", r"$E$ $(eV)$"))
+        self.fig.text(0.945, 0.33, "x-axis", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
 
     def initialize_plot(self):
         self.img.plot_lineout(self.lineout_ax)
@@ -606,6 +615,11 @@ class Plotter:
         #update label in table
         self.peak_table[(self.label_slider.val + 1, 1)].get_text().set_text(self.label_entry.text)
         self.fig.canvas.draw_idle()
+
+    def click_radio(self, val):
+        #change x values of everything on the plot
+        #change measurements in table
+        pass
 
     def set_widgets(self):
         self.x_zoom_slider.on_changed(self.update_xrange_slider)
