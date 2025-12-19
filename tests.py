@@ -15,9 +15,9 @@ test_img = "../../../Downloads/400um_spot_size/500mJ/xuv/alfs6_sig.tif"
 
 #=====
 test_basic_lineout = 0
-test_GUI = 0
+test_GUI = 1
 test_peak_fit = 0
-demo_x_axis = 1 #show x-axis in wavelength, pixels and eV 
+demo_x_axis = 0 #show x-axis in wavelength, pixels and eV 
 
 #=====
 if test_basic_lineout == True:
