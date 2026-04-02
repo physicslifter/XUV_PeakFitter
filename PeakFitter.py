@@ -84,7 +84,8 @@ class XUVImage:
             x_data = self.energy
         else:
             raise Exception(f"x-axis {x_axis} is invalid. Must be 'pixels', 'wavelength', or 'energy'")
-        ax.plot(x_data, self.lineout, label = "Lineout", c = "dodgerblue", linewidth = 2)
+        lineout = ax.plot(x_data, self.lineout, label = "Lineout", c = "dodgerblue", linewidth = 2)
+        return lineout
 
     def plot_img(self, ax):
         ax.imshow(self.img)
