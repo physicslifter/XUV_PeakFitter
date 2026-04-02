@@ -81,7 +81,7 @@ class XUVPeak:
         ax.plot(self.xdata, self.fit_line, label = "Voigt Fit", c = "magenta")
         #get area under curve
         if self.has_width == False:
-            area = np.trapz(self.fit_line, self.xdata)
+            area = np.trapezoid(self.fit_line, self.xdata)
             x_data = self.xdata
             fit_data = self.fit_line
             min_loc = 0
@@ -93,7 +93,7 @@ class XUVPeak:
             max_loc = peak_loc + int(self.width/2)
             x_data = self.xdata[min_loc:max_loc]
             fit_data = self.fit_line[min_loc:max_loc]
-            area = np.trapz(fit_data, x_data)
+            area = np.trapezoid(fit_data, x_data)
             #show lines
             #for val in [self.xdata[min_loc], self.xdata[max_loc], self.x0]:
             #    ax.axvline(x = val, c = "magenta")
@@ -271,18 +271,38 @@ class Plotter:
         self.measured_peak_lines = []
         self.measurement_labels = []
         self.auto_peaks = {}
+        self.current_x_axis = None  # set by _init_x_axis_state() after calibration
         self.img = XUVImage(fname)
         self.img.take_lineout()
         self.img.apply_linear_calibration(calibration)
+        self._init_x_axis_state()
         self.setup_plot()
         self.initialize_plot()
         self.show()
+
+    def _init_x_axis_state(self):
+        no_cal = (self.calibration.m == 1 and self.calibration.b == 0)
+        self.current_x_axis = "pixels" if no_cal else "wavelength"
+
+    def get_xdata(self):
+        if self.current_x_axis == "pixels":
+            return self.img.pixels
+        if self.current_x_axis == "energy":
+            return self.img.energy
+        return self.img.wavelengths  # default
+
+    def get_xlabel(self):
+        if self.current_x_axis == "pixels":
+            return "Pixel"
+        if self.current_x_axis == "energy":
+            return r"$E$ $(eV)$"
+        return r"$\lambda$ $(nm)$"
 
     def setup_plot(self):
         self.fig = plt.figure(figsize = (15, 8))
         self.lineout_ax = self.fig.add_axes([0.05, 0.4, 0.55, 0.55])
         self.lineout_ax.set_title(f"{self.fname.split('/')[-1]}")
-        self.lineout_ax.set_xlabel(r"$\lambda$ $(nm)$")
+        self.lineout_ax.set_xlabel(self.get_xlabel())
         self.lineout_ax.set_ylabel(r"$Intensity$ $(a.u.)$")
         self.setup_table()
         self.setup_manual_sliders()
@@ -299,10 +319,10 @@ class Plotter:
         self.fig.text(0.3, 0.22, "Manual Locator", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
 
         self.x_zoom_slider_ax = self.fig.add_axes([0.1, 0.15, 0.42, 0.05])
-        self.x_zoom_slider = RangeSlider(self.x_zoom_slider_ax, "X range", min(self.img.wavelengths), max(self.img.wavelengths), valinit = (min(self.img.wavelengths), max(self.img.wavelengths)))
+        self.x_zoom_slider = RangeSlider(self.x_zoom_slider_ax, "X range", min(self.get_xdata()), max(self.get_xdata()), valinit = (min(self.get_xdata()), max(self.get_xdata())))
 
         self.peak_loc_slider_ax = self.fig.add_axes([0.1, 0.1, 0.42, 0.05])
-        self.peak_loc_slider = RangeSlider(self.peak_loc_slider_ax, "Peak\nLoc", min(self.img.wavelengths), max(self.img.wavelengths), valinit = (min(self.img.wavelengths), max(self.img.wavelengths)))
+        self.peak_loc_slider = RangeSlider(self.peak_loc_slider_ax, "Peak\nLoc", min(self.get_xdata()), max(self.get_xdata()), valinit = (min(self.get_xdata()), max(self.get_xdata())))
 
         self.background_slider_ax = self.fig.add_axes([0.1, 0.05, 0.42, 0.05])
         self.background_slider = Slider(self.background_slider_ax, "Background", valmin = -max(self.img.lineout), valmax = max(self.img.lineout), valinit=0)
@@ -332,7 +352,7 @@ class Plotter:
         self.fig.text(0.675, 0.31, "Manual\nMeasure", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
 
         #checkboxes for fit type
-        fit_types = ["voight"]
+        fit_types = ["Voigt"]
         initial_states = [True]
         check_ax = self.fig.add_axes([0.66, 0.17, 0.11, 0.16])
         check_ax.set_axis_off()
@@ -340,7 +360,7 @@ class Plotter:
 
         #add slider for integral width
         integral_slider_ax = self.fig.add_axes([0.63, 0.08, 0.02, 0.15])
-        self.integral_slider = Slider(integral_slider_ax, "int\nWidth", valmin = 0, valmax = 30, valinit = 0, orientation = "vertical", valstep = 1)
+        self.integral_slider = Slider(integral_slider_ax, "Width", valmin = 0, valmax = 30, valinit = 0, orientation = "vertical", valstep = 1)
 
         #buttons
         fit_button_ax = self.fig.add_axes([0.66, 0.13, 0.05, 0.05])
@@ -375,7 +395,7 @@ class Plotter:
         #checkbox
         self.fig.text(0.745, 0.07, "Method: ")
         #checkboxes for fit type
-        fit_types = ["voight", "alamgir"]
+        fit_types = ["Voigt", "Alamgir"]
         initial_states = [True, False]
         check_ax = self.fig.add_axes([0.78, 0.05, 0.06, 0.05])
         check_ax.set_axis_off()
@@ -413,14 +433,15 @@ class Plotter:
         radio_ax = self.fig.add_axes([0.92, 0.16, 0.05, 0.15])
         radio_ax.set_facecolor("pink")
         self.x_radio = RadioButtons(radio_ax, ("Pixels", r"$\lambda$ $(nm)$", r"$E$ $(eV)$"))
-        self.fig.text(0.945, 0.33, "x-axis", ha = "center", va = "center", fontsize = 14, fontweight = "bold")
+        self.fig.text(0.945, 0.355, "X Axis", ha = "center", va = "center", fontsize = 14, fontweight = "bold", zorder=10)
 
     def initialize_plot(self):
-        self.img.plot_lineout(self.lineout_ax)
+        self.img.plot_lineout(self.lineout_ax, x_axis=self.current_x_axis)
         self.peak_min = self.lineout_ax.axvline(x = self.peak_loc_slider.val[0], c = "red", label = "Peak Fit Bounds")
         self.peak_max = self.lineout_ax.axvline(x = self.peak_loc_slider.val[1], c = "red")
         self.background_line = self.lineout_ax.axhline(y = 0, c = "green", label = "Background")
         self.lineout_ax.legend()
+        self.x_radio.set_active(["pixels", "wavelength", "energy"].index(self.current_x_axis))
 
     def update_xrange_slider(self, val):
         self.lineout_ax.set_xlim(val[0], val[1])
@@ -443,8 +464,9 @@ class Plotter:
             for label in self.auto_peak_labels:
                 label.remove()
         self.auto_peak_labels = []
-        min_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[0]))
-        max_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[1]))
+        xdata = self.get_xdata()
+        min_bound = np.argmin(np.abs(xdata - self.peak_loc_slider.val[0]))
+        max_bound = np.argmin(np.abs(xdata - self.peak_loc_slider.val[1]))
         peak_locs, x_peaks, intensities, peak_props = self.img.find_peaks(threshold = self.auto_background_slider.val, width = self.auto_width_slider.val, index_bounds = [min_bound, max_bound])
         #st()
         self.peaks = {"pixel_locs": peak_locs, "x_locs": x_peaks, "y_locs": intensities, "props": peak_props}
@@ -470,9 +492,10 @@ class Plotter:
         self.fig.canvas.draw_idle()
 
     def click_fit(self, val):
-        min_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[0]))
-        max_bound = np.argmin(np.abs(self.img.wavelengths - self.peak_loc_slider.val[1]))
-        xdata = self.img.wavelengths[min_bound:max_bound]
+        current_x = self.get_xdata()
+        min_bound = np.argmin(np.abs(current_x - self.peak_loc_slider.val[0]))
+        max_bound = np.argmin(np.abs(current_x - self.peak_loc_slider.val[1]))
+        xdata = current_x[min_bound:max_bound]
         ydata = self.img.lineout[min_bound:max_bound]
         peak = XUVPeak(xdata, ydata, background = self.background_slider.val)
         width = self.integral_slider.val
@@ -505,11 +528,12 @@ class Plotter:
     def click_add_peak(self, val):
         print(self.has_fit)
         if self.has_fit == True: # only add if we currently have the fit
-            full_peak = self.peak.get_peak(self.img.wavelengths)
-            area = np.trapz(full_peak, self.img.wavelengths)
-            peak_line = self.lineout_ax.plot(self.img.wavelengths, full_peak, linestyle = "--", linewidth = 1, c = self.peak_colors[self.num_peaks_measured], label = self.num_peaks_measured)
+            current_x = self.get_xdata()
+            full_peak = self.peak.get_peak(current_x)
+            area = np.trapezoid(full_peak, current_x)
+            peak_line = self.lineout_ax.plot(current_x, full_peak, linestyle = "--", linewidth = 1, c = self.peak_colors[self.num_peaks_measured], label = self.num_peaks_measured)
             self.measured_peak_lines.append(peak_line)
-            self.add_peak_to_table(area, method = "Manual Voight")
+            self.add_peak_to_table(area, method = "Manual Voigt")
             self.num_peaks_measured += 1
             self.lineout_ax.legend()
             self.fig.canvas.draw_idle()
@@ -541,7 +565,7 @@ class Plotter:
         xdata = self.img.pixels[min_loc:max_loc]
         ydata = self.img.lineout[min_loc:max_loc]
         self.has_auto_fit = True
-        if method == "voight":
+        if method == "Voigt":
             peak = XUVPeak(xdata, ydata, background = self.background_slider.val)
             width = self.measurement_width_slider.val
             if width == 0:
@@ -551,7 +575,7 @@ class Plotter:
             self.has_fit = True
             self.auto_peak = peak
             peak.show_fit()
-        elif method == "alamgir":
+        elif method == "Alamgir":
             peak = AlamgirPeak(xdata, ydata, background = self.background_slider.val, peak_x = peak_x, peak_y = peak_y, min_wavelength = self.img.wavelengths[min_loc])
             peak.x0 = self.img.wavelengths[peak_x]
             peak.amp = peak_y
@@ -566,33 +590,35 @@ class Plotter:
 
     def click_auto_add(self, val):
         if self.has_auto_fit == True:
-            if self.method == "voight":
-                full_peak = self.auto_peak.get_peak(np.arange(len(self.img.wavelengths)))
-                self.lineout_ax.plot(self.img.wavelengths, full_peak, c = "gold", linestyle = "--")
+            current_x = self.get_xdata()
+            if self.method == "Voigt":
+                # auto-fit was done in pixel-index space; evaluate there, display on current axis
+                full_peak_pixels = self.auto_peak.get_peak(self.img.pixels)
+                self.lineout_ax.plot(current_x, full_peak_pixels, c = "gold", linestyle = "--")
                 if self.measurement_width_slider.val == 0:
-                    self.lineout_ax.fill_between(self.img.wavelengths, np.ones_like(full_peak)*self.background_slider.val, full_peak, color = "gold", alpha = 0.1)
-                    area = np.trapz(full_peak, self.img.wavelengths)
+                    self.lineout_ax.fill_between(current_x, np.ones_like(full_peak_pixels)*self.background_slider.val, full_peak_pixels, color = "gold", alpha = 0.1)
+                    area = np.trapezoid(full_peak_pixels, current_x)
                 else:
-                    peak_loc = np.argmin(np.abs(self.peak.xdata - self.peak.x0))
+                    peak_loc = np.argmin(np.abs(self.img.pixels - self.peak.x0))
                     min_loc = peak_loc - int(self.peak.width/2)
                     max_loc = peak_loc + int(self.peak.width/2)
-                    x_data = self.peak.xdata[min_loc:max_loc]
                     fit_data = self.peak.fit_line[min_loc:max_loc]
-                    area = np.trapz(fit_data, x_data)
+                    x_display = current_x[min_loc:max_loc]
+                    area = np.trapezoid(fit_data, x_display)
                     background_data = np.ones_like(fit_data)*self.peak.background
-                    fill_between_xdata = self.peak.xdata[min_loc:max_loc]*self.calibration.m + self.calibration.b
-                    self.lineout_ax.fill_between(x = fill_between_xdata, y1 = background_data, y2 = fit_data, color  = "gold", alpha = 0.1)
-                self.add_peak_to_table(area, method = "Auto Voight")
-            elif self.method == "alamgir":
-                self.peak.show_fit(ax = self.lineout_ax, wavelengths = self.img.wavelengths, color = "cyan")
+                    self.lineout_ax.fill_between(x = x_display, y1 = background_data, y2 = fit_data, color = "gold", alpha = 0.1)
+                self.add_peak_to_table(area, method = "Auto Voigt")
+            elif self.method == "Alamgir":
+                self.peak.show_fit(ax = self.lineout_ax, wavelengths = current_x, color = "cyan")
                 self.add_peak_to_table(self.peak.area, "Auto Alamgir")
-            peak_num = self.peak_num_slider.val
-            peak_x = self.peaks["pixel_locs"][peak_num]
+            peak_num = int(self.peak_num_slider.val)
+            peak_pixel = self.peaks["pixel_locs"][peak_num]
             peak_y = self.peaks["y_locs"][peak_num]
-            label = self.lineout_ax.text(peak_x, peak_y, f"{self.num_peaks_measured}", c = "white", bbox=dict(facecolor='green', edgecolor='black', boxstyle='round,pad=0.3'))
+            peak_display_x = current_x[peak_pixel]
+            label = self.lineout_ax.text(peak_display_x, peak_y, f"{self.num_peaks_measured}", c = "white", bbox=dict(facecolor='green', edgecolor='black', boxstyle='round,pad=0.3'))
             self.measurement_labels.append(label)
             adjust_text(self.measurement_labels, ax = self.lineout_ax, only_move = "y")
-            self.auto_peaks[self.num_peaks_measured] = {"loc": [peak_x, peak_y], "label": f"{self.num_peaks_measured}"}
+            self.auto_peaks[self.num_peaks_measured] = {"loc": [peak_display_x, peak_y], "pixel_loc": peak_pixel, "label": f"{self.num_peaks_measured}"}
             self.num_peaks_measured += 1
 
             #update the peak no. slider for labeling
@@ -616,10 +642,77 @@ class Plotter:
         self.peak_table[(self.label_slider.val + 1, 1)].get_text().set_text(self.label_entry.text)
         self.fig.canvas.draw_idle()
 
-    def click_radio(self, val):
-        #change x values of everything on the plot
-        #change measurements in table
-        pass
+    def click_radio(self, label):
+        label_to_axis = {
+            "Pixels": "pixels",
+            r"$\lambda$ $(nm)$": "wavelength",
+            r"$E$ $(eV)$": "energy",
+        }
+        new_axis = label_to_axis.get(label)
+        if new_axis is None or new_axis == self.current_x_axis:
+            return
+        if self.num_peaks_measured > 0:
+            import tkinter.messagebox as mb
+            if not mb.askyesno("Warning", "Switching axes will clear plotted peak overlays. Continue?"):
+                self.x_radio.set_active(["pixels", "wavelength", "energy"].index(self.current_x_axis))
+                return
+        self.current_x_axis = new_axis
+        new_x = self.get_xdata()
+        x_min, x_max = float(min(new_x)), float(max(new_x))
+        # Replot lineout (cla replaces all artists cleanly)
+        self.lineout_ax.cla()
+        self.img.plot_lineout(self.lineout_ax, x_axis=self.current_x_axis)
+        self.lineout_ax.set_title(f"{self.fname.split('/')[-1]}")
+        self.lineout_ax.set_xlabel(self.get_xlabel())
+        self.lineout_ax.set_ylabel(r"$Intensity$ $(a.u.)$")
+        # Re-add boundary/background lines (destroyed by cla)
+        self.peak_min = self.lineout_ax.axvline(x=x_min, c="red", label="Peak Fit Bounds")
+        self.peak_max = self.lineout_ax.axvline(x=x_max, c="red")
+        self.background_line = self.lineout_ax.axhline(y=self.background_slider.val, c="green", label="Background")
+        # Update slider ranges
+        for slider, slider_ax in [(self.x_zoom_slider, self.x_zoom_slider_ax),
+                                   (self.peak_loc_slider, self.peak_loc_slider_ax)]:
+            slider.valmin, slider.valmax = x_min, x_max
+            slider_ax.set_xlim(x_min, x_max)
+            slider.set_val((x_min, x_max))
+        # Reposition measured peak labels using stored pixel_loc
+        self.measured_peak_lines, self.measurement_labels = [], []
+        for info in self.auto_peaks.values():
+            px = info["pixel_loc"]
+            label_obj = self.lineout_ax.text(
+                new_x[px], info["loc"][1], info["label"],
+                c="white", bbox=dict(facecolor='green', edgecolor='black', boxstyle='round,pad=0.3')
+            )
+            self.measurement_labels.append(label_obj)
+        self.lineout_ax.legend()
+        self.fig.canvas.draw_idle()
+
+    def click_finalize(self, val):
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        # Collect table data
+        celld = self.peak_table.get_celld()
+        rows = sorted(set(r for (r, c) in celld if r > 0))
+        cols = sorted(set(c for (r, c) in celld if r == 0 and c >= 0))
+        headers = [celld[(0, c)].get_text().get_text() for c in cols]
+        data = [
+            [celld[(r, c)].get_text().get_text() if (r, c) in celld else "" for c in cols]
+            for r in rows
+        ]
+        import pandas as pd
+        df = pd.DataFrame(data, columns=headers)
+        csv_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            title="Save peak data"
+        )
+        if csv_path:
+            df.to_csv(csv_path, index=False)
+            self.fig.savefig(csv_path.rsplit(".", 1)[0] + ".png", dpi=150, bbox_inches="tight")
+        root.destroy()
 
     def set_widgets(self):
         self.x_zoom_slider.on_changed(self.update_xrange_slider)
@@ -632,6 +725,8 @@ class Plotter:
         self.auto_add_button.on_clicked(self.click_auto_add)
         self.label_slider.on_changed(self.update_labeler_slider)
         self.update_label_button.on_clicked(self.click_update_label)
+        self.x_radio.on_clicked(self.click_radio)
+        self.finalize_button.on_clicked(self.click_finalize)
 
     def show(self):
         self.set_widgets()
