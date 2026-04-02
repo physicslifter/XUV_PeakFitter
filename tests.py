@@ -40,8 +40,8 @@ if test_basic_lineout == True:
 
 #=====
 if test_GUI == True:
-    #calibration = LinearCalibration(m = 0.00614, b = 6.832)
-    calibration = LinearCalibration(m = 1, b = 0)
+    calibration = LinearCalibration(m = 0.00614, b = 6.832)
+    #calibration = LinearCalibration(m = 1, b = 0)
     plotter = Plotter(test_img, calibration)
 
 #=====
